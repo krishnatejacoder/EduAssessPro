@@ -1,0 +1,304 @@
+Complete Amazon EFS Practical — Detailed Step-by-Step
+
+Using:
+
+Amazon Elastic Compute Cloud
+Amazon Elastic File System
+
+Goal:
+
+Create 2 EC2 instances
+Create EFS
+Mount EFS on both instances
+Share files between both instances
+ARCHITECTURE
+EC2-1  ─────┐
+            ├── EFS (shared storage)
+EC2-2  ─────┘
+
+Both instances can read/write same files.
+
+STEP 1 — Create Security Groups
+
+Go to:
+
+VPC → Security Groups
+A. Create EC2 Security Group
+
+Click:
+
+Create Security Group
+Configure
+Setting	Value
+Name	SG-EC2
+VPC	Default VPC
+Inbound Rules
+
+Add:
+
+Type	Port	Source
+SSH	22	My IP
+Outbound Rules
+
+Keep:
+
+Allow All
+
+Click:
+
+Create Security Group
+B. Create EFS Security Group
+
+Again click:
+
+Create Security Group
+Configure
+Setting	Value
+Name	SG-EFS
+VPC	Same Default VPC
+Inbound Rule
+
+Add:
+
+Type	Port	Source
+NFS	2049	SG-EC2
+
+IMPORTANT:
+
+Source type = Security Group
+Select SG-EC2
+Outbound
+
+Keep default:
+
+Allow All
+
+Create SG.
+
+STEP 2 — Launch EC2 Instance 1
+
+Go:
+
+EC2 → Launch Instance
+Configure
+Setting	Value
+Name	EFS-1
+AMI	Amazon Linux 2023
+Instance Type	t2.micro
+Key Pair	Select/Create
+VPC	Default
+Subnet	us-east-1a
+Security Group	SG-EC2
+
+Launch instance.
+
+STEP 3 — Launch EC2 Instance 2
+
+Same steps.
+
+Setting	Value
+Name	EFS-2
+AMI	Amazon Linux 2023
+Type	t2.micro
+Subnet	us-east-1b
+Security Group	SG-EC2
+
+Launch.
+
+STEP 4 — Create EFS
+
+Go:
+
+EFS → Create File System
+File System Settings
+Setting	Value
+Name	my-efs
+Type	Regional
+
+Click:
+
+Next
+STEP 5 — Network Access
+
+VERY IMPORTANT STEP.
+
+You will see mount targets.
+
+For EACH Availability Zone
+
+You will see:
+
+subnet
+security group
+REMOVE
+default security group
+ADD
+
+SG-EFS
+
+
+Do this for:
+- us-east-1a
+- us-east-1b
+
+---
+
+Click:
+```text id="jlwmvc"
+Next → Create
+STEP 6 — Wait for Mount Targets
+
+Go:
+
+EFS → Your File System → Network
+
+Wait until:
+
+AZ	Status
+us-east-1a	Available
+us-east-1b	Available
+
+DO NOT continue until status becomes:
+
+Available
+STEP 7 — Connect to EC2 Instances
+
+Open TWO terminals.
+
+Connect to EC2-1
+ssh -i "key.pem" ec2-user@PUBLIC-IP-1
+Connect to EC2-2
+
+Open second terminal:
+
+ssh -i "key.pem" ec2-user@PUBLIC-IP-2
+STEP 8 — Become Root
+
+Run on BOTH instances:
+
+sudo su
+STEP 9 — Install EFS Utilities
+
+Run on BOTH:
+
+yum install -y amazon-efs-utils
+STEP 10 — Create Mount Directory
+
+Run on BOTH:
+
+mkdir /efs
+STEP 11 — Get Mount Command
+
+Go:
+
+EFS → Your File System → Attach
+
+Copy command.
+
+Looks like:
+
+mount -t efs -o tls fs-xxxxxxxx:/ /efs
+STEP 12 — Mount EFS
+
+Run copied command on BOTH EC2 instances.
+
+Example:
+
+mount -t efs -o tls fs-061e7512f5dca68db:/ /efs
+STEP 13 — Verify Mount
+
+Run:
+
+df -h
+
+You should see:
+
+/efs
+STEP 14 — Test Shared Storage
+On EC2-1
+cd /efs
+touch hello.txt
+ls
+
+Output:
+
+hello.txt
+On EC2-2
+cd /efs
+ls
+
+You should ALSO see:
+
+hello.txt
+
+SUCCESS 🎉
+
+This proves:
+
+both EC2 instances share same EFS storage.
+COMMON ERRORS
+ERROR 1
+Failed to resolve EFS DNS
+
+CAUSE:
+
+no mount targets
+wrong region
+wrong VPC
+
+FIX:
+
+create mount targets
+wait until Available
+ERROR 2
+Connection timed out
+
+CAUSE:
+
+NFS port 2049 blocked
+
+FIX:
+
+SG-EFS inbound:
+NFS
+Port 2049
+Source = SG-EC2
+ERROR 3
+No such file or directory
+
+CAUSE:
+
+wrong folder path
+
+Use:
+
+cd /efs
+
+NOT:
+
+cd efs
+
+when already inside /efs.
+
+CLEANUP (IMPORTANT)
+
+After lab:
+
+Delete EFS
+EFS → Delete
+Terminate EC2
+EC2 → Instances → Terminate
+Delete Extra EBS Volumes
+EC2 → Volumes
+
+Delete unattached ones.
+
+FINAL FLOW
+Create SGs
+→ Launch EC2s
+→ Create EFS
+→ Configure mount targets
+→ Install efs-utils
+→ Mount EFS
+→ Create file
+→ Verify on second EC2
