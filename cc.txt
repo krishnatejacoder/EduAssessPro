@@ -1,0 +1,108 @@
+ebs:
+
+Attach an additional EBS volume (example: 20 GB) to a Linux EC2 instance and mount it using the system default device names that appear on modern EC2 (Nitro) instances.
+Note: Although you select a device name like /dev/xvdf in the AWS Console, the OS typically shows the disk as NVMe devices such as /dev/nvme1n1 and partitions as /dev/nvme1n1p1.
+________________________________________
+Step 1: Create an EBS Volume
+1.	Log in to AWS Management Console
+2.	Go to EC2 → Volumes
+3.	Click Create volume
+4.	Choose:
+o	Volume type: gp3 (recommended)
+o	Size: 20 GB (example)
+o	Availability Zone: Same AZ as the EC2 instance
+5.	Click Create volume
+________________________________________
+Step 2: Attach the EBS Volume to EC2
+1.	Select the newly created EBS volume
+2.	Click Actions → Attach volume
+3.	Choose:
+o	Instance: Your Linux EC2 instance
+o	Device name (console level): /dev/xvdf
+4.	Click Attach
+Internally, Linux will expose this as an NVMe device (for example /dev/nvme1n1).
+________________________________________
+Step 3: Connect to the EC2 Instance
+Connect using SSH:
+ssh -i key.pem ec2-user@<public-ip>
+________________________________________
+Step 4: Verify the Attached Disk	
+List all block devices:
+lsblk
+You will typically see:
+•	Root volume: /dev/nvme0n1 (with partitions like nvme0n1p1)
+•	New EBS volume: /dev/nvme1n1 (no partition yet)
+Check filesystem information:
+lsblk -fs
+________________________________________
+Step 5: Create a Partition on the New Volume
+Create a partition on the unpartitioned disk:
+fdisk /dev/nvme1n1
+Inside fdisk:
+•	Press m → Help menu
+•	Press n → New partition
+•	Press p → Primary partition
+•	Press Enter → Default partition number
+•	Press Enter → Default first sector
+•	Press Enter → Default last sector (use full disk)
+•	Press w → Write changes and exit
+Notify the kernel:
+partprobe
+________________________________________
+Step 6: Verify the New Partition
+lsblk -fs
+You should now see:
+•	/dev/nvme1n1p1
+________________________________________
+Step 7: Format the Partition
+Format the partition with XFS filesystem:
+mkfs.xfs /dev/nvme1n1p1
+Verify:
+lsblk -fs
+________________________________________
+Step 8: Create a Mount Directory
+mkdir /mnt/archana
+________________________________________
+Step 9: Mount the Volume
+mount /dev/nvme1n1p1 /mnt/archana
+Verify:
+df -h
+________________________________________
+Step 10: Make the Mount Persistent (fstab)
+Get the UUID:
+blkid /dev/nvme1n1p1
+Example output:
+UUID="f1e294e6-7657-4761-bba5-bb2d0eab3936"
+Edit /etc/fstab:
+nano /etc/fstab
+Add this line at the end:
+UUID=f1e294e6-7657-4761-bba5-bb2d0eab3936   /mnt/archana   xfs   defaults,nofail   0   0
+Save and exit.
+Test the entry:
+mount -a
+navigate to cd /mnt/archana
+create the files here
+touch f1
+________________________________________
+Step 11: Verify Persistence
+1.	Reboot the instance:
+reboot
+2.	Reconnect and check:
+df -hmkdir
+➡️ The volume should mount automatically.
+________________________________________
+Step 12: Detach and Reattach Volume (Data Recovery Scenario)
+Detach the Volume
+•	EC2 → Volumes → Select volume
+•	Actions → Detach volume
+Attach to Another EC2 Instance (Same AZ)
+1.	Attach the volume to a new instance
+2.	Log in to the new instance
+3.	Create mount directory:
+mkdir /mnt/archana
+4.	Mount the existing partition:
+mount /dev/nvme1n1p1 /mnt/archana
+✅ All previously stored data will be available.
+________________________________________
+Summary Flow
+Create Volume → Attach → lsblk → fdisk → mkfs → mkdir → mount → fstab → reboot
